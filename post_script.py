@@ -19,6 +19,9 @@ def sender(url, data, headers, number_req, q_req):
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
         q_req.put(idx)
+
+    time.sleep(2)
+    requester(url,data,headers)
     
 #    requests_sent = len(sender_list)
 #    print("No. requests sent: {}.\n".format(requests_sent))
@@ -45,10 +48,11 @@ def receiver(q):
                     # End of partition event
                     sys.stderr.write('%% Reached end of topic {0} [{1}] at offset {2}\n'.format(
                                     msg.topic(), msg.partition(), msg.offset()))
-                    break
+                    continue
                 else:
                     raise KafkaException(msg.error())
-
+                    break
+            print('Received message: {}'.format(msg.value().decode('utf-8')))
             msgv = msg.value()
             q.put(msgv)
 
@@ -56,7 +60,7 @@ def receiver(q):
         sys.stderr.write('%% Aborted by user\n')
 
     finally:
-        print("%% Exiting\n")
+        print("%% Closing consumer\n")
         c.close()
 
 def reader(q):
@@ -78,7 +82,7 @@ if __name__ == "__main__":
 
 
     p_receiver = multiprocessing.Process(target=receiver, args=(q,))
-    p_sender = multiprocessing.Process(target=sender, args=(url, data, headers, 10, q_req))
+    p_sender = multiprocessing.Process(target=sender, args=(url, data, headers, 2, q_req))
 
     p_receiver.start()
     p_sender.start()
