@@ -6,9 +6,14 @@ from confluent_kafka import Consumer, KafkaException, KafkaError
 import sys
 import queue
 import json
+import string
+import random
+
+
+def id_generator(size=10, chars=string.ascii_uppercase + string.digits):
+    return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
 
 def requester(url, data, headers):
-    data['sys_ts'] = time.time()
     r = requests.post(url, json = data, headers=headers)
 
 
@@ -18,6 +23,7 @@ def sender(url, data, headers, number_req, q):
     """
 
     for idx, number in enumerate(range(number_req),1):
+        data['sys_ts'] = time.time()
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
         q.put(idx)
@@ -68,10 +74,7 @@ def receiver(q):
             tm_msg = msg_dict['sys_ts']
             tm_tot = tm_msg + tm_out
             
-            msgv = msg.value()
-            # Need to get message time stamp
-            # Update tm_tot
-            q.put(msgv)
+            q.put(msg_dict)
 
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
@@ -102,7 +105,7 @@ if __name__ == "__main__":
 
     p_receiver = multiprocessing.Process(target=receiver, args=(q,))
     p_sender = multiprocessing.Process(
-            target=sender, args=(url, data, headers, 2, q)
+            target=sender, args=(url, data, headers, 5, q)
             )
 
     p_receiver.start()
@@ -110,6 +113,8 @@ if __name__ == "__main__":
     p_receiver.join()
     p_sender.join()
 
+    reader_list = reader(q)
+    print(reader_list)
     # items_sent = len(reader(q_req))
     # items_received = len(reader(q))
     # print("No. items sent to Kafka: {}.".format(items_sent))
