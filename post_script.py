@@ -5,28 +5,20 @@ import threading
 from confluent_kafka import Consumer, KafkaException, KafkaError
 import sys
 import queue
-from multiprocessing.dummy import Pool
 
 
+def requester(url, data, headers):
+    data['sys_ts'] = time.time()
+    r = requests.post(url, json = data, headers=headers)
 
-
-def sender(url, data_data, headers_headers, number_req, q):
+def sender(url, data, headers, number_req, q):
     """
     Posts a request to a specified URL a number of times
     """
-    requests_sent = []
     for _ in range(number_req):
-        data_data['sys_ts'] = time.time()
-        t = threading.Thread(target=requests.post, args=(url,data_data,headers_headers))
+        t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
 
-    # requests_sent = []
-    # for number in range(number_req):
-    #     data_data['sys_ts'] = time.time()
-    #     request = requests.post(url, json = data_data, headers = headers_headers)
-    #     requests_sent.append(request.json())
-    #
-    # return requests_sent
 
 def receiver(q):
     """
