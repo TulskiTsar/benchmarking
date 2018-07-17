@@ -11,30 +11,28 @@ def requester(url, data, headers):
     data['sys_ts'] = time.time()
     r = requests.post(url, json = data, headers=headers)
 
+
 def sender(url, data, headers, number_req, q_req):
     """
-    Posts a request to a specified URL a number of times
+    Posts specified number of requests on "separate" threads
     """
+
     for idx, number in enumerate(range(number_req),1):
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
         q_req.put(idx)
-
-    time.sleep(2)
-    requester(url,data,headers)
-    
-#    requests_sent = len(sender_list)
-#    print("No. requests sent: {}.\n".format(requests_sent))
 
 
 def receiver(q):
     """
     Sets up the Kafka listener to handle requests
     """
+
     conf = {'bootstrap.servers': BROKER, 'group.id': GROUP, 'session.timeout.ms': 6000,
             'default.topic.config': {'auto.offset.reset': 'smallest'}}
     c = Consumer(conf)
     running = True
+
 
     try:
         c.subscribe([TOPIC])
@@ -63,12 +61,14 @@ def receiver(q):
         print("%% Closing consumer\n")
         c.close()
 
+
 def reader(q):
     reader_list = []
     while not q.empty():
         test_get = q.get()
         reader_list.append(test_get)
     return reader_list
+
 
 if __name__ == "__main__":
     TOPIC = "bar"
