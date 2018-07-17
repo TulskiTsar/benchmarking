@@ -5,14 +5,14 @@ import threading
 from confluent_kafka import Consumer, KafkaException, KafkaError
 import sys
 import queue
-
+import json
 
 def requester(url, data, headers):
     data['sys_ts'] = time.time()
     r = requests.post(url, json = data, headers=headers)
 
 
-def sender(url, data, headers, number_req, q_req):
+def sender(url, data, headers, number_req, q):
     """
     Posts specified number of requests on "separate" threads
     """
@@ -20,8 +20,8 @@ def sender(url, data, headers, number_req, q_req):
     for idx, number in enumerate(range(number_req),1):
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
-        q_req.put(idx)
-
+        q.put(idx)
+        
 
 def receiver(q):
     """
@@ -36,10 +36,21 @@ def receiver(q):
 
     try:
         c.subscribe([TOPIC])
+        tm_out = 5
+        tm_cur = time.time()
+        tm_tot = tm_cur + tm_out
         while running:
             msg = c.poll(timeout=1.0)
 
-            if msg is None: continue
+            if msg is None: 
+                tm_none = time.time()
+
+                if tm_none > tm_tot:
+                    print('%% No message recieved for 5 seconds.\n')
+                    break
+
+                else: continue
+                
 
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
@@ -50,8 +61,16 @@ def receiver(q):
                 else:
                     raise KafkaException(msg.error())
                     break
-            print('Received message: {}'.format(msg.value().decode('utf-8')))
+            msg_decode = msg.value().decode('utf-8')
+            print('Received message: {}'.format(msg_decode))
+            msg_dict = json.loads(msg.value())
+            
+            tm_msg = msg_dict['sys_ts']
+            tm_tot = tm_msg + tm_out
+            
             msgv = msg.value()
+            # Need to get message time stamp
+            # Update tm_tot
             q.put(msgv)
 
     except KeyboardInterrupt:
@@ -82,14 +101,17 @@ if __name__ == "__main__":
 
 
     p_receiver = multiprocessing.Process(target=receiver, args=(q,))
-    p_sender = multiprocessing.Process(target=sender, args=(url, data, headers, 2, q_req))
+    p_sender = multiprocessing.Process(
+            target=sender, args=(url, data, headers, 2, q)
+            )
 
     p_receiver.start()
     p_sender.start()
     p_receiver.join()
     p_sender.join()
 
-    items_sent = len(reader(q_req))
-    items_received = len(reader(q))
-    print("No. items sent to Kafka: {}.".format(items_sent))
-    print("No. items received from Kafka: {}.".format(items_received))
+    # items_sent = len(reader(q_req))
+    # items_received = len(reader(q))
+    # print("No. items sent to Kafka: {}.".format(items_sent))
+    # print("No. items received from Kafka: {}.".format(items_received))
+
