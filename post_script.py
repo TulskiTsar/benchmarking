@@ -11,18 +11,17 @@ def requester(url, data, headers):
     data['sys_ts'] = time.time()
     r = requests.post(url, json = data, headers=headers)
 
-def sender(url, data, headers, number_req, q):
+def sender(url, data, headers, number_req, q_req):
     """
     Posts a request to a specified URL a number of times
     """
-    sender_list = []
     for idx, number in enumerate(range(number_req),1):
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
-        sender_list.append(idx)
+        q_req.put(idx)
     
-    requests_sent = len(sender_list)
-    print("No. requests sent: {}.".format(requests_sent))
+#    requests_sent = len(sender_list)
+#    print("No. requests sent: {}.\n".format(requests_sent))
 
 
 def receiver(q):
@@ -57,7 +56,7 @@ def receiver(q):
         sys.stderr.write('%% Aborted by user\n')
 
     finally:
-        print("%% Exiting")
+        print("%% Exiting\n")
         c.close()
 
 def reader(q):
@@ -75,14 +74,18 @@ if __name__ == "__main__":
     data = {'node_id':'00000000-0000-0000-0000-000000002977'}
     headers = {'Content-type': 'application/json'}
     q = multiprocessing.Queue()
+    q_req = multiprocessing.Queue()
+
 
     p_receiver = multiprocessing.Process(target=receiver, args=(q,))
-    p_sender = multiprocessing.Process(target=sender, args=(url, data, headers, 10, q))
+    p_sender = multiprocessing.Process(target=sender, args=(url, data, headers, 10, q_req))
 
     p_receiver.start()
     p_sender.start()
     p_receiver.join()
     p_sender.join()
 
+    items_sent = len(reader(q_req))
     items_received = len(reader(q))
+    print("No. items sent to Kafka: {}.".format(items_sent))
     print("No. items received from Kafka: {}.".format(items_received))
