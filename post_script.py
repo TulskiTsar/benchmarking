@@ -15,9 +15,14 @@ def sender(url, data, headers, number_req, q):
     """
     Posts a request to a specified URL a number of times
     """
-    for _ in range(number_req):
+    sender_list = []
+    for idx, number in enumerate(range(number_req),1):
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
+        sender_list.append(idx)
+    
+    requests_sent = len(sender_list)
+    print("No. requests sent: {}.".format(requests_sent))
 
 
 def receiver(q):
