@@ -95,7 +95,6 @@ if __name__ == "__main__":
     data = {'node_id':'00000000-0000-0000-0000-000000002977'}
     headers = {'Content-type': 'application/json'}
     q = multiprocessing.Queue()
-    q_req = multiprocessing.Queue()
 
 
     p_receiver = multiprocessing.Process(target=receiver, args=(q,))
