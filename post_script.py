@@ -46,7 +46,6 @@ def receiver(q):
                     raise KafkaException(msg.error())
 
             msgv = msg.value()
-            print(msgv)
             q.put(msgv)
 
     except KeyboardInterrupt:
@@ -60,7 +59,6 @@ def reader(q):
     reader_list = []
     while not q.empty():
         test_get = q.get()
-        print("Received: {}.".format(test_get))
         reader_list.append(test_get)
     return reader_list
 
