@@ -74,9 +74,11 @@ def receiver(q):
                 else:
                     raise KafkaException(msg.error())
                     break
+            res_ts = time.time()
             msg_decode = msg.value().decode('utf-8')
             msg_dict = json.loads(msg.value())
             msg_dict['author'] = "receiver"
+            msg_dict['res_ts'] = res_ts
             # print('Received message: {}\n'.format(msg_dict))
             tm_msg = msg_dict['sys_ts']
             tm_tot = tm_msg + tm_out
