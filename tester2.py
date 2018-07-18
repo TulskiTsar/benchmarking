@@ -32,7 +32,7 @@ def sender(url, data, headers, number_req, q):
         data['uniq_id'] = id_generator()
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
-        print("Sent message: {}".format(data))
+        print("Sent message: {}\n".format(data))
         q.put(data)
 
 
@@ -90,11 +90,18 @@ def receiver(q):
 
 
 def reader(q):
-    reader_list = []
+    sender_dict = {}
+    receiver_dict = {}
     while not q.empty():
-        test_get = q.get()
-        reader_list.append(test_get)
-    return reader_list
+        get_dict = q.get()
+
+        if 'sender' in get_dict.values():
+            print("hurrah")
+        else:
+            print("nuzzah")
+
+    return sender_dict, receiver_dict 
+        
 
 
 if __name__ == "__main__":
@@ -106,17 +113,13 @@ if __name__ == "__main__":
     data = {'node_id':'00000000-0000-0000-0000-000000002977'}
     headers = {'Content-type': 'application/json'}
     q = multiprocessing.Queue()
-
-
     p_receiver = multiprocessing.Process(target=receiver, args=(q,))
-    p_sender = multiprocessing.Process(target=sender, args=(url, data, headers, 2, q))
+    p_sender = multiprocessing.Process(target=sender, args=(url, data, headers, 1, q))
 
     p_receiver.start()
     p_sender.start()
     p_receiver.join()
     p_sender.join()
-
-    items_received = len(reader(q))
-    print("No. items in queue: {}\n".format(items_received))
-    print("%% Quitting program")
-
+    # p_receiver.join()
+    # p_sender.join()
+    reader(q)
