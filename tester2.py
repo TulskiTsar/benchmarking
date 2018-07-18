@@ -26,14 +26,17 @@ def sender(url, data, headers, number_req, q):
     Posts specified number of requests on "separate" threads
     """
     data['author'] = "sender"
-
+    messages_sent = 0
     for idx, number in enumerate(range(number_req),1):
         data['sys_ts'] = time.time()
         data['uniq_id'] = id_generator()
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
         # print("Sent message: {}\n".format(data))
+        messages_sent += 1
         q.put(data)
+    print("Messages sent: {}".format(messages_sent))
+    return messages_sent   
 
 
 def receiver(q):
@@ -52,6 +55,7 @@ def receiver(q):
         tm_out = 0.5
         tm_cur = time.time()
         tm_tot = tm_cur + tm_out
+        messages_received = 0
         while running:
             msg = c.poll(timeout=1.0)
 
@@ -74,20 +78,23 @@ def receiver(q):
                 else:
                     raise KafkaException(msg.error())
                     break
-            res_ts = time.time()
-            msg_decode = msg.value().decode('utf-8')
             msg_dict = json.loads(msg.value())
+            # Don't add new entry to dictionary, create tuple
+            if not msg_dict.get('session_id') == session_id:
+            # session_id == msg_dict.get('session_id'):
+                sys.stderr.write('%% Session ID mismatch: ignored')
+                continue
             msg_dict['author'] = "receiver"
-            msg_dict['res_ts'] = res_ts
-            # print('Received message: {}\n'.format(msg_dict))
             tm_msg = msg_dict['sys_ts']
             tm_tot = tm_msg + tm_out
+            messages_received += 1
             q.put(msg_dict)
 
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
 
     finally:
+        print("Messages received: {}".format(messages_received))
         print("%% Closing consumer\n")
         c.close()
 
@@ -103,12 +110,10 @@ def reader(q):
     while not q.empty():
         get_dict = q.get()
 
-        if 'sender' in get_dict.values():
+        if 'sender' == get_dict.get('author'):
             sender_list.append(get_dict)
-        if 'receiver' in get_dict.values():
-            receiver_list.append(get_dict)
         else:
-            print("%% No message author detected")
+            receiver_list.append(get_dict)
 
     return sender_list, receiver_list 
 
@@ -132,15 +137,19 @@ if __name__ == "__main__":
     TOPIC = "bar"
     BROKER = "kafka:9092"
     GROUP = "foo"
+    session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    data = {'node_id':'00000000-0000-0000-0000-000000002977'}
+    data = {
+           'node_id':'00000000-0000-0000-0000-000000002977',
+           'session_id':session_id
+           }
     headers = {'Content-type': 'application/json'}
     q = multiprocessing.Queue()
     p_receiver = multiprocessing.Process(target=receiver, args=(q,))
     p_sender = multiprocessing.Process(
             target=sender, args=(url, data, headers, 2, q)
             )
-
+    print("Session ID: {}\n".format(session_id))
     p_receiver.start()
     p_sender.start()
     p_receiver.join()
