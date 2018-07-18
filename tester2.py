@@ -42,14 +42,14 @@ def receiver(q):
     """
 
     conf = {'bootstrap.servers': BROKER, 'group.id': GROUP, 'session.timeout.ms': 6000,
-            'default.topic.config': {'auto.offset.reset': 'smallest'}}
+            'default.topic.config': {'auto.offset.reset': 'largest'}}
     c = Consumer(conf)
     running = True
 
 
     try:
         c.subscribe([TOPIC])
-        tm_out = 5
+        tm_out = 0.5
         tm_cur = time.time()
         tm_tot = tm_cur + tm_out
         while running:
@@ -59,7 +59,8 @@ def receiver(q):
                 tm_none = time.time()
 
                 if tm_none > tm_tot:
-                    print("%% No message received for 5 seconds.")
+                    print("%% No message received for {} seconds".format(
+                        str(tm_out)))
                     break
                 else:continue
 
@@ -90,6 +91,11 @@ def receiver(q):
 
 
 def reader(q):
+    """
+    Reads the queue and sends information to relevant list according to author
+    of information
+    """
+
     sender_list = []
     receiver_list = []
     while not q.empty():
@@ -97,17 +103,25 @@ def reader(q):
 
         if 'sender' in get_dict.values():
             sender_list.append(get_dict)
-        else:
+        if 'receiver' in get_dict.values():
             receiver_list.append(get_dict)
+        else:
+            print("%% No message author detected")
 
     return sender_list, receiver_list 
 
 def validator(list1, list2):
+    """ 
+    Validates that all sent messages have been received
+    """
+
     for item in list1:
         if 'uniq_id' in item.keys():
            uniq_id = item['uniq_id']
            if (item['uniq_id'] == uniq_id for item in list2): 
-               print("Message ID:{} sent and received".format(uniq_id))
+               print("Message ID:{} sent - received".format(uniq_id))
+           else:
+               print("Message ID:{} sent - not received".format(uniq_id))
         
 
 
