@@ -18,6 +18,7 @@ def sender(url, data, headers, number_req, q):
     """
     Posts specified number of requests on "separate" threads
     """
+    data['author'] = "sender"
 
     for idx, number in enumerate(range(number_req),1):
         data['sys_ts'] = time.time()
@@ -49,7 +50,7 @@ def receiver(q):
                 tm_none = time.time()
 
                 if tm_none > tm_tot:
-                    print("%% No message received for 5 seconds.\n")
+                    print("%% No message received for 5 seconds.")
                     break
                 else:continue
 
@@ -64,9 +65,9 @@ def receiver(q):
                     raise KafkaException(msg.error())
                     break
             msg_decode = msg.value().decode('utf-8')
-            print('Received message: {}'.format(msg_decode))
+            print('Received message: {}\n'.format(msg_decode))
             msg_dict = json.loads(msg.value())
-
+            msg_dict['author'] = "receiver"
             tm_msg = msg_dict['sys_ts']
             tm_tot = tm_msg + tm_out
             q.put(msg_dict)
@@ -88,6 +89,7 @@ def reader(q):
 
 
 if __name__ == "__main__":
+    print("")
     TOPIC = "bar"
     BROKER = "kafka:9092"
     GROUP = "foo"
@@ -105,7 +107,7 @@ if __name__ == "__main__":
     p_receiver.join()
     p_sender.join()
 
-    items_sent = len(reader(q_req))
     items_received = len(reader(q))
-    print("No. items sent to Kafka: {}.".format(items_sent))
-    print("No. items received from Kafka: {}.".format(items_received))
+    print("No. items in queue: {}\n".format(items_received))
+    print("%% Quitting program")
+
