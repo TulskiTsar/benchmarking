@@ -10,8 +10,15 @@ import string
 import random
 
 
+def id_generator(
+        size=9, chars=string.ascii_uppercase + string.ascii_lowercase +
+        string.digits):
+    return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
+
+
 def requester(url, data, headers):
     r = requests.post(url, json = data, headers=headers)
+    return r.content
 
 
 def sender(url, data, headers, number_req, q):
@@ -22,9 +29,11 @@ def sender(url, data, headers, number_req, q):
 
     for idx, number in enumerate(range(number_req),1):
         data['sys_ts'] = time.time()
+        data['uniq_id'] = id_generator()
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
-        q.put(idx)
+        print("Sent message: {}".format(data))
+        q.put(data)
 
 
 def receiver(q):
@@ -65,9 +74,9 @@ def receiver(q):
                     raise KafkaException(msg.error())
                     break
             msg_decode = msg.value().decode('utf-8')
-            print('Received message: {}\n'.format(msg_decode))
             msg_dict = json.loads(msg.value())
             msg_dict['author'] = "receiver"
+            print('Received message: {}\n'.format(msg_dict))
             tm_msg = msg_dict['sys_ts']
             tm_tot = tm_msg + tm_out
             q.put(msg_dict)
