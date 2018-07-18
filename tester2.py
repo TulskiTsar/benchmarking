@@ -32,7 +32,7 @@ def sender(url, data, headers, number_req, q):
         data['uniq_id'] = id_generator()
         t = threading.Thread(target=requester, args=(url,data,headers))
         t.start()
-        print("Sent message: {}\n".format(data))
+        # print("Sent message: {}\n".format(data))
         q.put(data)
 
 
@@ -76,7 +76,7 @@ def receiver(q):
             msg_decode = msg.value().decode('utf-8')
             msg_dict = json.loads(msg.value())
             msg_dict['author'] = "receiver"
-            print('Received message: {}\n'.format(msg_dict))
+            # print('Received message: {}\n'.format(msg_dict))
             tm_msg = msg_dict['sys_ts']
             tm_tot = tm_msg + tm_out
             q.put(msg_dict)
@@ -90,17 +90,24 @@ def receiver(q):
 
 
 def reader(q):
-    sender_dict = {}
-    receiver_dict = {}
+    sender_list = []
+    receiver_list = []
     while not q.empty():
         get_dict = q.get()
 
         if 'sender' in get_dict.values():
-            print("hurrah")
+            sender_list.append(get_dict)
         else:
-            print("nuzzah")
+            receiver_list.append(get_dict)
 
-    return sender_dict, receiver_dict 
+    return sender_list, receiver_list 
+
+def validator(list1, list2):
+    for item in list1:
+        if 'uniq_id' in item.keys():
+           uniq_id = item['uniq_id']
+           if (item['uniq_id'] == uniq_id for item in list2): 
+               print("Message ID:{} sent and received".format(uniq_id))
         
 
 
@@ -114,7 +121,9 @@ if __name__ == "__main__":
     headers = {'Content-type': 'application/json'}
     q = multiprocessing.Queue()
     p_receiver = multiprocessing.Process(target=receiver, args=(q,))
-    p_sender = multiprocessing.Process(target=sender, args=(url, data, headers, 1, q))
+    p_sender = multiprocessing.Process(
+            target=sender, args=(url, data, headers, 2, q)
+            )
 
     p_receiver.start()
     p_sender.start()
@@ -122,4 +131,5 @@ if __name__ == "__main__":
     p_sender.join()
     # p_receiver.join()
     # p_sender.join()
-    reader(q)
+    sender_list, receiver_list = reader(q)
+    validator(sender_list, receiver_list)
