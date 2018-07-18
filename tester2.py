@@ -39,16 +39,16 @@ def sender(url, data, headers, number_req, q):
     return messages_sent   
 
 
-def receiver(q):
+def receiver(q,l):
     """
     Sets up the Kafka listener to handle requests
     """
-
+    l.acquire()
     conf = {'bootstrap.servers': BROKER, 'group.id': GROUP, 'session.timeout.ms': 6000,
             'default.topic.config': {'auto.offset.reset': 'largest'}}
     c = Consumer(conf)
     running = True
-
+    l.release()
 
     try:
         c.subscribe([TOPIC])
@@ -72,8 +72,10 @@ def receiver(q):
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
                     # End of partition event
-                    sys.stderr.write('%% Reached end of topic {0} [{1}] at offset {2}\n'.format(
-                                    msg.topic(), msg.partition(), msg.offset()))
+                    sys.stderr.write(
+                            '%% Reached end of topic {} [{}] at offset {}\n'.format(
+                                    msg.topic(), msg.partition(), msg.offset())
+                            )
                     continue
                 else:
                     raise KafkaException(msg.error())
@@ -81,7 +83,7 @@ def receiver(q):
             msg_dict = json.loads(msg.value())
             # Don't add new entry to dictionary, create tuple
             if not msg_dict.get('session_id') == session_id:
-            # session_id == msg_dict.get('session_id'):
+                # session_id == msg_dict.get('session_id'):
                 sys.stderr.write('%% Session ID mismatch: ignored')
                 continue
             msg_dict['author'] = "receiver"
@@ -138,14 +140,19 @@ if __name__ == "__main__":
     BROKER = "kafka:9092"
     GROUP = "foo"
     session_id = id_generator(5)
+
+
     url = "http://localhost:8080/data/{}".format(TOPIC)
     data = {
            'node_id':'00000000-0000-0000-0000-000000002977',
            'session_id':session_id
            }
     headers = {'Content-type': 'application/json'}
+
+
+    lock = multiprocessing.Lock()
     q = multiprocessing.Queue()
-    p_receiver = multiprocessing.Process(target=receiver, args=(q,))
+    p_receiver = multiprocessing.Process(target=receiver, args=(q,lock))
     p_sender = multiprocessing.Process(
             target=sender, args=(url, data, headers, 2, q)
             )
