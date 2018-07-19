@@ -148,13 +148,13 @@ if __name__ == "__main__":
            'session_id':session_id
            }
     headers = {'Content-type': 'application/json'}
-
+    quantity = 2
 
     lock = multiprocessing.Lock()
     q = multiprocessing.Queue()
     p_receiver = multiprocessing.Process(target=receiver, args=(q,lock))
     p_sender = multiprocessing.Process(
-            target=sender, args=(url, data, headers, 2, q)
+            target=sender, args=(url, data, headers, quantity, q)
             )
     print("Session ID: {}\n".format(session_id))
     p_receiver.start()
