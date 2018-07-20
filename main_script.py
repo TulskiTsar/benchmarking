@@ -18,6 +18,9 @@ def id_generator(size=10, chars=string.ascii_uppercase + string.digits):
 #     return r
 
 def worker(qq, thread_number):
+    """
+    Sends POST requests
+    """
     data = {
     'node_id':'00000000-0000-0000-0000-000000002977',
     'session_id':session_id,
@@ -37,15 +40,14 @@ def worker(qq, thread_number):
         data['sys_ts'] = time.time()
         requests.post(url, json = data)
 
-def sender(number_req, q, send_q):
-    # """
-    # Posts specified number of requests on "separate" threads
-    # """
-
+def sender(number_req, q):
+    """
+    Starts specified number of threads for POST request
+    """
     qq = queue.Queue()
     threads = []
     messages_sent = 0
-    thread_no = 10
+    thread_no = 200
 
     for i in range(thread_no):
         t = threading.Thread(target=worker, args=(qq,i))
@@ -57,6 +59,7 @@ def sender(number_req, q, send_q):
         messages_sent += 1
 
     print("%% Messages sent: {}".format(messages_sent))
+    # c_q.put(('sender',messages_sent))
 
     for _ in range(thread_no):
         qq.put(None)
@@ -64,7 +67,7 @@ def sender(number_req, q, send_q):
     for t in threads:
         t.join()
 
-def receiver(q,l):
+def receiver(q, l, no_requests):
 
     """
     Kafka listener for incoming requests
@@ -81,24 +84,25 @@ def receiver(q,l):
     running = True
     try:
         c.subscribe([TOPIC])
-        tm_out = 2
+        tm_out = 5
         tm_cur = time.time()
         tm_tot = tm_cur + tm_out
         messages_received = 0
         l.release()
         print("%% Lock released")
-        while running:
+        while True:
+
             msg = c.poll(timeout=1.0)
 
             if msg is None:
                 tm_none = time.time()
 
                 if tm_none > tm_tot:
+                    print("%% Messages received: {}".format(messages_received))
                     print(
                     '%% No message recieved for {} seconds.'.format(tm_out)
                     )
-                    running = False
-
+                    break
                 continue
 
             if msg.error():
@@ -114,6 +118,7 @@ def receiver(q,l):
                     break
 
             msg_dict = json.loads(msg.value())
+
             if not msg_dict.get('session_id') == session_id:
                 print("Session ID mismatch")
                 continue
@@ -122,8 +127,12 @@ def receiver(q,l):
             tm_msg = msg_dict['sys_ts']
             tm_tot = tm_msg + tm_out
             messages_received += 1
-            q.put(msg.value())
-        print("%% Messages received: {}".format(messages_received))
+
+            if messages_received == no_requests:
+                print("%% Messages received: {}".format(messages_received))
+                # c_q.put(('reciever', messages_received))
+                break
+            # q.put(msg.value())
 
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
@@ -148,28 +157,64 @@ def receiver(q,l):
 #
 #     return sender_list, receiver_list
 
+# Basic killer function
+def killer(c_q, k_q):
+    check_dict = dict()
+    while True:
+        item = c_q.get()
+        check_dict[item[0]] = item[1]
+
+        if len(check_dict) == 2:
+            break
+
+    if check_dict.get('sender') == check_dict.get('receiver'):
+        print("%% All items sent and recieved")
+        k_q.put("Kill")
+
+
+    #     check_list.append(item)
+    #     if len(check_list) == 2:
+    #         break
+    #
+    # if check_list[0] == check_list[1]:
+    #     print("All sent and received")
+    #
+    #
+    # else:
+    #     print("Incomplete message")
+
 if __name__ == "__main__":
     TOPIC = "bar"
     BROKER = "kafka:9092"
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    no_requests = 100
+    no_requests = 200
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
-    send_q = multiprocessing.Queue()
+    c_q = multiprocessing.Queue()
+    k_q = multiprocessing.Queue()
 
     p_receiver = multiprocessing.Process(
                                 target=receiver,
-                                args=(q,l),
+                                args=(q,l,no_requests),
                                 )
 
     p_sender = multiprocessing.Process(
                                 target=sender,
-                                args=(no_requests, q, send_q),
+                                args=(no_requests, q),
                                 )
 
+    # p_killer = multiprocessing.Process(
+    #                             target=killer,
+    #                             args=()
+    #                             )
+
+
+    # p_killer.start()
     p_receiver.start()
     p_sender.start()
+
     p_receiver.join()
     p_sender.join()
+    # p_killer.join()
