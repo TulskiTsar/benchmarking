@@ -24,8 +24,9 @@ def worker(qq, thread_number):
     'author': 'sender',
     'thread_number': thread_number,
     'sys_ts': None,
-    'seq_number': None
+    'seq_number': None,
     }
+
     while True:
         item = qq.get()
 
@@ -43,8 +44,9 @@ def sender(number_req, q, send_q):
 
     qq = queue.Queue()
     threads = []
+    messages_sent = 0
+    thread_no = 10
 
-    thread_no = 200
     for i in range(thread_no):
         t = threading.Thread(target=worker, args=(qq,i))
         t.start()
@@ -52,6 +54,9 @@ def sender(number_req, q, send_q):
 
     for i in range(number_req):
         qq.put(i)
+        messages_sent += 1
+
+    print("%% Messages sent: {}".format(messages_sent))
 
     for _ in range(thread_no):
         qq.put(None)
@@ -59,27 +64,30 @@ def sender(number_req, q, send_q):
     for t in threads:
         t.join()
 
-def receiver(q):
+def receiver(q,l):
 
     """
     Kafka listener for incoming requests
     """
-
+    l.acquire()
+    print("%% Lock acquired")
     conf = {
     'bootstrap.servers':BROKER,
     'group.id':GROUP,
     'session.timeout.ms':6000,
-    'default.topic.config':{'auto.offset.reset':'smallest'}
+    'default.topic.config':{'auto.offset.reset':'smallest'},
     }
     c = Consumer(conf)
-
+    running = True
     try:
         c.subscribe([TOPIC])
-        tm_out = 5
+        tm_out = 2
         tm_cur = time.time()
         tm_tot = tm_cur + tm_out
         messages_received = 0
-        while True:
+        l.release()
+        print("%% Lock released")
+        while running:
             msg = c.poll(timeout=1.0)
 
             if msg is None:
@@ -89,7 +97,7 @@ def receiver(q):
                     print(
                     '%% No message recieved for {} seconds.'.format(tm_out)
                     )
-                    break
+                    running = False
 
                 continue
 
@@ -115,7 +123,7 @@ def receiver(q):
             tm_tot = tm_msg + tm_out
             messages_received += 1
             q.put(msg.value())
-        print("Messages received: {}".format(messages_received))
+        print("%% Messages received: {}".format(messages_received))
 
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
@@ -141,26 +149,26 @@ def receiver(q):
 #     return sender_list, receiver_list
 
 if __name__ == "__main__":
-    lock = multiprocessing.Lock()
     TOPIC = "bar"
     BROKER = "kafka:9092"
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
     no_requests = 100
-
+    l = multiprocessing.Lock()
     q = multiprocessing.Queue()
     send_q = multiprocessing.Queue()
 
     p_receiver = multiprocessing.Process(
                                 target=receiver,
-                                args=(q,)
+                                args=(q,l),
                                 )
 
     p_sender = multiprocessing.Process(
                                 target=sender,
-                                args=(no_requests, q, send_q)
+                                args=(no_requests, q, send_q),
                                 )
+
     p_receiver.start()
     p_sender.start()
     p_receiver.join()
