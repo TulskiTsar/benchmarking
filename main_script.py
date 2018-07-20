@@ -8,28 +8,56 @@ import queue
 import json
 import string
 import random
+import concurrent.futures
 
 def id_generator(size=10, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
 
-def requester(url, data, headers):
-    r = requests.post(url, json = data, headers=headers)
-    return r
+# def requester(url, data, headers):
+#     r = requests.post(url, json = data, headers=headers)
+#     return r
 
-def sender(url, data, headers, number_req, q):
-    """
-    Posts specified number of requests on "separate" threads
-    """
-    data['author'] = "sender"
-    messages_sent = 0
-    for idx, number in enumerate(range(number_req),1):
+def worker(qq, thread_number):
+    data = {
+    'node_id':'00000000-0000-0000-0000-000000002977',
+    'session_id':session_id,
+    'author': 'sender',
+    'thread_number': thread_number,
+    'sys_ts': None,
+    'seq_number': None
+    }
+    while True:
+        item = qq.get()
+
+        if item is None:
+            break
+
+        data['seq_number'] = item
         data['sys_ts'] = time.time()
-        t = threading.Thread(target=requester, args=(url,data,headers))
+        requests.post(url, json = data)
+
+def sender(number_req, q, send_q):
+    # """
+    # Posts specified number of requests on "separate" threads
+    # """
+
+    qq = queue.Queue()
+    threads = []
+
+    thread_no = 200
+    for i in range(thread_no):
+        t = threading.Thread(target=worker, args=(qq,i))
         t.start()
-        messages_sent += 1
-        q.put(data)
-    print("Messages sent: {}".format(messages_sent))
-    return messages_sent
+        threads.append(t)
+
+    for i in range(number_req):
+        qq.put(i)
+
+    for _ in range(thread_no):
+        qq.put(None)
+
+    for t in threads:
+        t.join()
 
 def receiver(q):
 
@@ -119,13 +147,10 @@ if __name__ == "__main__":
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    data = {
-    'node_id':'00000000-0000-0000-0000-000000002977',
-    'session_id':session_id
-    }
-    headers = {'Content-type': 'application/json'}
-    no_requests = 2
+    no_requests = 100
+
     q = multiprocessing.Queue()
+    send_q = multiprocessing.Queue()
 
     p_receiver = multiprocessing.Process(
                                 target=receiver,
@@ -134,9 +159,8 @@ if __name__ == "__main__":
 
     p_sender = multiprocessing.Process(
                                 target=sender,
-                                args=(url, data, headers, no_requests, q)
+                                args=(no_requests, q, send_q)
                                 )
-
     p_receiver.start()
     p_sender.start()
     p_receiver.join()
