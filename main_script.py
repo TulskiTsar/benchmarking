@@ -17,7 +17,7 @@ def id_generator(size=10, chars=string.ascii_uppercase + string.digits):
 #     r = requests.post(url, json = data, headers=headers)
 #     return r
 
-def worker(qq, thread_number):
+def worker(qq, thread_number,f):
     """
     Sends POST requests
     """
@@ -38,7 +38,18 @@ def worker(qq, thread_number):
 
         data['seq_number'] = item
         data['sys_ts'] = time.time()
-        requests.post(url, json = data)
+        r = requests.post(url, json = data)
+        # Timing required here
+        status = json.dumps(json.loads(r.content))
+        status_code = r.status_code
+        # print(status_code)
+
+        # Log the status codes of the requests
+        # f.write(status + ' ' + str(status_code) + "\n")
+        f.write(
+        "Request: " + "[" + str(thread_number) + "]" + str(item)+" "+ str(r) + "\n"
+        )
+
 
 def sender(number_req, q):
     """
@@ -47,10 +58,10 @@ def sender(number_req, q):
     qq = queue.Queue()
     threads = []
     messages_sent = 0
-    thread_no = 200
-
+    thread_no = 5
+    f = open("Status Logs.txt", "w+")
     for i in range(thread_no):
-        t = threading.Thread(target=worker, args=(qq,i))
+        t = threading.Thread(target=worker, args=(qq,i,f))
         t.start()
         threads.append(t)
 
@@ -172,24 +183,13 @@ def killer(c_q, k_q):
         k_q.put("Kill")
 
 
-    #     check_list.append(item)
-    #     if len(check_list) == 2:
-    #         break
-    #
-    # if check_list[0] == check_list[1]:
-    #     print("All sent and received")
-    #
-    #
-    # else:
-    #     print("Incomplete message")
-
 if __name__ == "__main__":
     TOPIC = "bar"
     BROKER = "kafka:9092"
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    no_requests = 200
+    no_requests = 20
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
     c_q = multiprocessing.Queue()
