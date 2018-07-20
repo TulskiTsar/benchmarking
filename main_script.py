@@ -17,7 +17,7 @@ def id_generator(size=10, chars=string.ascii_uppercase + string.digits):
 #     r = requests.post(url, json = data, headers=headers)
 #     return r
 
-def worker(qq, thread_number,f):
+def worker(qq, thread_number, f, w_q):
     """
     Sends POST requests
     """
@@ -49,9 +49,10 @@ def worker(qq, thread_number,f):
         f.write(
         "Request: " + "[" + str(thread_number) + "]" + str(item)+" "+ str(r) + "\n"
         )
+        w_q.put(data)
 
 
-def sender(number_req, q):
+def sender(number_req, q, w_q):
     """
     Starts specified number of threads for POST request
     """
@@ -61,7 +62,7 @@ def sender(number_req, q):
     thread_no = 5
     f = open("Status Logs.txt", "w+")
     for i in range(thread_no):
-        t = threading.Thread(target=worker, args=(qq,i,f))
+        t = threading.Thread(target=worker, args=(qq,i,f,w_q))
         t.start()
         threads.append(t)
 
@@ -78,7 +79,7 @@ def sender(number_req, q):
     for t in threads:
         t.join()
 
-def receiver(q, l, no_requests):
+def receiver(q, l, no_requests, w_q):
 
     """
     Kafka listener for incoming requests
@@ -139,12 +140,13 @@ def receiver(q, l, no_requests):
             tm_tot = tm_msg + tm_out
             messages_received += 1
 
+
             if messages_received == no_requests:
                 print("%% Messages received: {}".format(messages_received))
                 # c_q.put(('reciever', messages_received))
                 break
             # q.put(msg.value())
-
+            w_q.put(msg_dict)
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
 
@@ -152,35 +154,33 @@ def receiver(q, l, no_requests):
         print("%% Closing consumer \n")
         c.close()
 
-# def reader(q):
-#     """
-#     Reads queue and divide information
-#     """
-#     sender_list = []
-#     receiver_list = []
-#     while not q.empty():
-#         get_dict = q.get()
-#
-#         if 'sender' == get_dict.get('author'):
-#             sender_list.append(get_dict)
-#         else:
-#             receiver_list.append(get_dict)
-#
-#     return sender_list, receiver_list
+def reader(w_q):
+    """
+    Reads queue and divide information
+    """
+    f_send = open("Sent Requests.txt", "w+")
+    f_rec = open("Received Requests.txt", "w+")
+    while not w_q.empty():
+        get_dict = w_q.get()
+
+        if 'sender' == get_dict.get('author'):
+            f_send.write(str(get_dict))
+        else:
+            f_rec.write(str(get_dict))
 
 # Basic killer function
-def killer(c_q, k_q):
-    check_dict = dict()
-    while True:
-        item = c_q.get()
-        check_dict[item[0]] = item[1]
-
-        if len(check_dict) == 2:
-            break
-
-    if check_dict.get('sender') == check_dict.get('receiver'):
-        print("%% All items sent and recieved")
-        k_q.put("Kill")
+# def killer(c_q, k_q):
+#     check_dict = dict()
+#     while True:
+#         item = c_q.get()
+#         check_dict[item[0]] = item[1]
+#
+#         if len(check_dict) == 2:
+#             break
+#
+#     if check_dict.get('sender') == check_dict.get('receiver'):
+#         print("%% All items sent and recieved")
+#         k_q.put("Kill")
 
 
 if __name__ == "__main__":
@@ -192,17 +192,16 @@ if __name__ == "__main__":
     no_requests = 20
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
-    c_q = multiprocessing.Queue()
-    k_q = multiprocessing.Queue()
+    write_q = multiprocessing.Queue()
 
     p_receiver = multiprocessing.Process(
                                 target=receiver,
-                                args=(q,l,no_requests),
+                                args=(q, l, no_requests, write_q),
                                 )
 
     p_sender = multiprocessing.Process(
                                 target=sender,
-                                args=(no_requests, q),
+                                args=(no_requests, q, write_q),
                                 )
 
     # p_killer = multiprocessing.Process(
@@ -218,3 +217,4 @@ if __name__ == "__main__":
     p_receiver.join()
     p_sender.join()
     # p_killer.join()
+    reader(write_q)
