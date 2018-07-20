@@ -28,6 +28,8 @@ def worker(qq, thread_number, f, w_q):
     'thread_number': thread_number,
     'sys_ts': None,
     'seq_number': None,
+    'status_code': None,
+    'res_ts': None,
     }
 
     while True:
@@ -39,16 +41,19 @@ def worker(qq, thread_number, f, w_q):
         data['seq_number'] = item
         data['sys_ts'] = time.time()
         r = requests.post(url, json = data)
-        # Timing required here
+        data['res_ts'] = time.time()
+        response_time = data.get('res_ts') - data.get('sys_ts')
+        data['response_time'] = response_time
         status = json.dumps(json.loads(r.content))
         status_code = r.status_code
-        # print(status_code)
-
-        # Log the status codes of the requests
-        # f.write(status + ' ' + str(status_code) + "\n")
-        f.write(
-        "Request: " + "[" + str(thread_number) + "]" + str(item)+" "+ str(r) + "\n"
-        )
+        data['status_code'] = status_code
+        # # print(status_code)
+        #
+        # # Log the status codes of the requests
+        # # f.write(status + ' ' + str(status_code) + "\n")
+        # f.write(
+        # "Request: " + "[" + str(thread_number) + "]" + str(item)+" "+ str(r) + "\n"
+        # )
         w_q.put(data)
 
 
