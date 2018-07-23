@@ -25,6 +25,7 @@ def worker(qq, thread_number, w_q):
     'seq_number': None,
     'status_code': None,
     'res_ts': None,
+    'author': 'sender',
     }
 
     while True:
@@ -36,14 +37,16 @@ def worker(qq, thread_number, w_q):
         data['seq_number'] = item
         data['sys_ts'] = time.time()
         r = requests.post(url, json = data)
+
         data['res_ts'] = time.time()
         response_time = data.get('res_ts') - data.get('sys_ts')
         data['response_time'] = response_time
         status_code = r.status_code
         data['status_code'] = status_code
 
-        msg_auth_s = (0, data)
-        w_q.put(msg_auth_s)
+        # msg_auth_s = (0, data)
+        # w_q.put(msg_auth_s)
+        w_q.put(data)
 
 def sender(number_req, q, w_q):
     """
@@ -133,9 +136,10 @@ def receiver(q, l, no_requests, w_q):
                 print("%% Messages received: {}".format(messages_received))
                 # c_q.put(('reciever', messages_received))
                 break
-
-            msg_auth_r = (1, msg_load)
-            w_q.put(msg_auth_r)
+            msg_load['author'] = 'receiver'
+            # msg_auth_r = (1, msg_load)
+            # w_q.put(msg_auth_r)
+            w_q.put(msg_load)
 
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
@@ -150,12 +154,20 @@ def reader(w_q):
     """
     f_send = open("Sent Requests.txt", "w+")
     f_rec = open("Received Requests.txt", "w+")
+    # while not w_q.empty():
+    #     get_dict = w_q.get()
+    #
+    #     if get_dict[0] == 0:
+    #         f_send.write("\n" + str(get_dict[1]) + "\n")
+    #     else:
+    #         f_rec.write("\n" + str(get_dict[1]) + "\n")
     while not w_q.empty():
         get_dict = w_q.get()
-        if get_dict[0] == 0:
-            f_send.write(str(get_dict[1]) + "\n")
+
+        if get_dict['author'] == 'sender':
+            f_send.write("\n" + str(get_dict) + "\n")
         else:
-            f_rec.write(str(get_dict[1]) + "\n")
+            f_rec.write("\n" + str(get_dict) + "\n")
 
 if __name__ == "__main__":
     TOPIC = "bar"
