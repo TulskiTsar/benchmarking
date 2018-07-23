@@ -13,18 +13,13 @@ import concurrent.futures
 def id_generator(size=10, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
 
-# def requester(url, data, headers):
-#     r = requests.post(url, json = data, headers=headers)
-#     return r
-
-def worker(qq, thread_number, f, w_q):
+def worker(qq, thread_number, w_q):
     """
     Sends POST requests
     """
     data = {
     'node_id':'00000000-0000-0000-0000-000000002977',
     'session_id':session_id,
-    'author': 'sender',
     'thread_number': thread_number,
     'sys_ts': None,
     'seq_number': None,
@@ -44,18 +39,11 @@ def worker(qq, thread_number, f, w_q):
         data['res_ts'] = time.time()
         response_time = data.get('res_ts') - data.get('sys_ts')
         data['response_time'] = response_time
-        status = json.dumps(json.loads(r.content))
         status_code = r.status_code
         data['status_code'] = status_code
-        # # print(status_code)
-        #
-        # # Log the status codes of the requests
-        # # f.write(status + ' ' + str(status_code) + "\n")
-        # f.write(
-        # "Request: " + "[" + str(thread_number) + "]" + str(item)+" "+ str(r) + "\n"
-        # )
-        w_q.put(data)
 
+        msg_auth_s = (0, data)
+        w_q.put(msg_auth_s)
 
 def sender(number_req, q, w_q):
     """
@@ -65,9 +53,9 @@ def sender(number_req, q, w_q):
     threads = []
     messages_sent = 0
     thread_no = 5
-    f = open("Status Logs.txt", "w+")
+
     for i in range(thread_no):
-        t = threading.Thread(target=worker, args=(qq,i,f,w_q))
+        t = threading.Thread(target=worker, args=(qq,i,w_q))
         t.start()
         threads.append(t)
 
@@ -76,7 +64,6 @@ def sender(number_req, q, w_q):
         messages_sent += 1
 
     print("%% Messages sent: {}".format(messages_sent))
-    # c_q.put(('sender',messages_sent))
 
     for _ in range(thread_no):
         qq.put(None)
@@ -98,7 +85,7 @@ def receiver(q, l, no_requests, w_q):
     'default.topic.config':{'auto.offset.reset':'smallest'},
     }
     c = Consumer(conf)
-    running = True
+
     try:
         c.subscribe([TOPIC])
         tm_out = 5
@@ -124,34 +111,32 @@ def receiver(q, l, no_requests, w_q):
 
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
-                    # End of partition event
-                    sys.stderr.write(
-                    '%% Reached end of topic {0} [{1}] at offset {2}\n'.format(
+                    print(
+                    '%% Reached end of topic {} [{}] at offset {}\n'.format(
                                     msg.topic(), msg.partition(), msg.offset())
                                     )
                     continue
                 else:
                     raise KafkaException(msg.error())
                     break
+            msg_load = json.loads(msg.value())
 
-            msg_dict = json.loads(msg.value())
-
-            if not msg_dict.get('session_id') == session_id:
+            if not msg_load.get('session_id') == session_id:
                 print("Session ID mismatch")
                 continue
 
-            msg_dict['author'] = "receiver"
-            tm_msg = msg_dict['sys_ts']
+            tm_msg = msg_load['sys_ts']
             tm_tot = tm_msg + tm_out
             messages_received += 1
-
 
             if messages_received == no_requests:
                 print("%% Messages received: {}".format(messages_received))
                 # c_q.put(('reciever', messages_received))
                 break
-            # q.put(msg.value())
-            w_q.put(msg_dict)
+
+            msg_auth_r = (1, msg_load)
+            w_q.put(msg_auth_r)
+
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
 
@@ -167,26 +152,10 @@ def reader(w_q):
     f_rec = open("Received Requests.txt", "w+")
     while not w_q.empty():
         get_dict = w_q.get()
-
-        if 'sender' == get_dict.get('author'):
-            f_send.write(str(get_dict))
+        if get_dict[0] == 0:
+            f_send.write(str(get_dict[1]) + "\n")
         else:
-            f_rec.write(str(get_dict))
-
-# Basic killer function
-# def killer(c_q, k_q):
-#     check_dict = dict()
-#     while True:
-#         item = c_q.get()
-#         check_dict[item[0]] = item[1]
-#
-#         if len(check_dict) == 2:
-#             break
-#
-#     if check_dict.get('sender') == check_dict.get('receiver'):
-#         print("%% All items sent and recieved")
-#         k_q.put("Kill")
-
+            f_rec.write(str(get_dict[1]) + "\n")
 
 if __name__ == "__main__":
     TOPIC = "bar"
@@ -208,18 +177,9 @@ if __name__ == "__main__":
                                 target=sender,
                                 args=(no_requests, q, write_q),
                                 )
-
-    # p_killer = multiprocessing.Process(
-    #                             target=killer,
-    #                             args=()
-    #                             )
-
-
-    # p_killer.start()
     p_receiver.start()
     p_sender.start()
 
     p_receiver.join()
     p_sender.join()
-    # p_killer.join()
     reader(write_q)
