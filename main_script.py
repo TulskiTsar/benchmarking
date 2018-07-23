@@ -13,7 +13,7 @@ import concurrent.futures
 def id_generator(size=10, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
 
-def worker(qq, thread_number, w_q):
+def worker(qq, thread_number, write_queue):
     """
     Sends POST requests
     """
@@ -28,53 +28,54 @@ def worker(qq, thread_number, w_q):
     'author': 'sender',
     }
 
-    while True:
+    while not qq.empty():
         item = qq.get()
 
-        if item is None:
-            break
-
+        # if item is None:
+        #     break
+        data['res_ts'] = None 
         data['seq_number'] = item
         data['sys_ts'] = time.time()
         r = requests.post(url, json = data)
 
+
         data['res_ts'] = time.time()
-        response_time = data.get('res_ts') - data.get('sys_ts')
-        data['response_time'] = response_time
-        status_code = r.status_code
-        data['status_code'] = status_code
+        # response_time = data.get('res_ts') - data.get('sys_ts')
+        # data['response_time'] = response_time
+        # status_code = r.status_code
+        # data['status_code'] = status_code
+        write_queue.put(data)
 
-        # msg_auth_s = (0, data)
-        # w_q.put(msg_auth_s)
-        w_q.put(data)
 
-def sender(number_req, q, w_q):
+def sender(number_req, q, write_queue):
     """
     Starts specified number of threads for POST request
     """
     qq = queue.Queue()
     threads = []
     messages_sent = 0
-    thread_no = 5
-
-    for i in range(thread_no):
-        t = threading.Thread(target=worker, args=(qq,i,w_q))
-        t.start()
-        threads.append(t)
+    thread_no = 2
 
     for i in range(number_req):
         qq.put(i)
         messages_sent += 1
 
+    for i in range(thread_no):
+        # Starts worker thread to send POST requests
+        t = threading.Thread(target=worker, args=(qq,i,write_queue))
+        t.start()
+        threads.append(t)
+
+
     print("%% Messages sent: {}".format(messages_sent))
 
-    for _ in range(thread_no):
-        qq.put(None)
+    # for _ in range(thread_no):
+    #     qq.put(None)
 
     for t in threads:
         t.join()
 
-def receiver(q, l, no_requests, w_q):
+def receiver(q, l, no_requests, write_queue):
 
     """
     Kafka listener for incoming requests
@@ -112,7 +113,7 @@ def receiver(q, l, no_requests, w_q):
                     break
                 continue
 
-            if msg.error():
+            elif msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
                     print(
                     '%% Reached end of topic {} [{}] at offset {}\n'.format(
@@ -122,6 +123,7 @@ def receiver(q, l, no_requests, w_q):
                 else:
                     raise KafkaException(msg.error())
                     break
+
             msg_load = json.loads(msg.value())
 
             if not msg_load.get('session_id') == session_id:
@@ -134,12 +136,10 @@ def receiver(q, l, no_requests, w_q):
 
             if messages_received == no_requests:
                 print("%% Messages received: {}".format(messages_received))
-                # c_q.put(('reciever', messages_received))
                 break
+
             msg_load['author'] = 'receiver'
-            # msg_auth_r = (1, msg_load)
-            # w_q.put(msg_auth_r)
-            w_q.put(msg_load)
+            write_queue.put(msg_load)
 
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
@@ -148,21 +148,14 @@ def receiver(q, l, no_requests, w_q):
         print("%% Closing consumer \n")
         c.close()
 
-def reader(w_q):
+def reader(write_queue):
     """
     Reads queue and divide information
     """
     f_send = open("Sent Requests.txt", "w+")
     f_rec = open("Received Requests.txt", "w+")
-    # while not w_q.empty():
-    #     get_dict = w_q.get()
-    #
-    #     if get_dict[0] == 0:
-    #         f_send.write("\n" + str(get_dict[1]) + "\n")
-    #     else:
-    #         f_rec.write("\n" + str(get_dict[1]) + "\n")
-    while not w_q.empty():
-        get_dict = w_q.get()
+    while not write_queue.empty():
+        get_dict = write_queue.get()
 
         if get_dict['author'] == 'sender':
             f_send.write("\n" + str(get_dict) + "\n")
@@ -175,7 +168,7 @@ if __name__ == "__main__":
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    no_requests = 20
+    no_requests = 10
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
     write_q = multiprocessing.Queue()
