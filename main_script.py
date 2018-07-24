@@ -59,7 +59,7 @@ def worker(qq, thread_number, write_queue):
         data['response_time'] = response_time
         status_code = r.status_code
         data['status_code'] = status_code
-        write_queue.put(data)
+        write_queue.put(('sender', data))
 
 
 def sender(number_req, q, write_queue):
@@ -154,7 +154,7 @@ def receiver(q, l, no_requests, write_queue):
                 break
 
             msg_load['author'] = 'receiver'
-            write_queue.put(msg_load)
+            write_queue.put(('receiver', msg_load))
 
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
@@ -173,20 +173,18 @@ def reader(write_queue):
 
     with open("Sent Requests.txt", "w+") as f_send, \
         open("Received Requests.txt", "w+") as f_rec:
+        
         while not write_queue.empty():
-            get_dict = write_queue.get()
+            get_tup = write_queue.get()
+            req_id = get_tup[1].get('req_id')
 
-            seq_number = get_dict.get('seq_number')
-            thread_number = get_dict.get('thread_number')
-            req_id = get_dict.get('req_id')
-
-            if get_dict['author'] == 'sender':
-                f_send.write("\n" + str(get_dict) + "\n")
-                send_d[req_id] = get_dict
+            if get_tup[0] == 'sender':
+                f_send.write("\n" + str(get_tup[1]) + "\n")
+                send_d[req_id] = get_tup[1]
 
             else:
-                f_rec.write("\n" + str(get_dict) + "\n")
-                recv_d[req_id] = get_dict
+                f_rec.write("\n" + str(get_tup[1]) + "\n")
+                recv_d[req_id] = get_tup[1]
     # Merging sender & receiver dictionaries into one
     print(send_d)
 
