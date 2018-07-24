@@ -17,33 +17,48 @@ def worker(qq, thread_number, write_queue):
     """
     Sends POST requests
     """
-    data = {
-    'node_id':'00000000-0000-0000-0000-000000002977',
-    'session_id':session_id,
-    'thread_number': thread_number,
-    'sys_ts': None,
-    'seq_number': None,
-    'status_code': None,
-    'res_ts': None,
-    'author': 'sender',
-    }
+    # data = {
+    # 'node_id':'00000000-0000-0000-0000-000000002977',
+    # 'session_id':session_id,
+    # 'thread_number': thread_number,
+    # 'sys_ts': None,
+    # 'seq_number': None,
+    # 'status_code': None,
+    # 'res_ts': None,
+    # 'author': 'sender',
+    # }
 
     while not qq.empty():
-        item = qq.get()
+        seq_number = qq.get()
 
         # if item is None:
         #     break
-        data['res_ts'] = None 
-        data['seq_number'] = item
-        data['sys_ts'] = time.time()
+        # data['res_ts'] = None
+        # data['response_time'] = None
+        # data['status_code'] = None
+        # data['seq_number'] = item
+        # data['sys_ts'] = time.time()
+        req_id = "{}[{}]".format(thread_number, seq_number)
+        data = {
+        'node_id':'00000000-0000-0000-0000-000000002977',
+        'session_id':session_id,
+        'thread_number': thread_number,
+        'sys_ts': time.time(),
+        'seq_number': seq_number,
+        'status_code': None,
+        'res_ts': None,
+        'author': 'sender',
+        'req_id': req_id,
+        }
+
         r = requests.post(url, json = data)
 
 
         data['res_ts'] = time.time()
-        # response_time = data.get('res_ts') - data.get('sys_ts')
-        # data['response_time'] = response_time
-        # status_code = r.status_code
-        # data['status_code'] = status_code
+        response_time = data.get('res_ts') - data.get('sys_ts')
+        data['response_time'] = response_time
+        status_code = r.status_code
+        data['status_code'] = status_code
         write_queue.put(data)
 
 
@@ -54,7 +69,7 @@ def sender(number_req, q, write_queue):
     qq = queue.Queue()
     threads = []
     messages_sent = 0
-    thread_no = 2
+    thread_no = 5
 
     for i in range(number_req):
         qq.put(i)
@@ -152,15 +167,29 @@ def reader(write_queue):
     """
     Reads queue and divide information
     """
-    f_send = open("Sent Requests.txt", "w+")
-    f_rec = open("Received Requests.txt", "w+")
-    while not write_queue.empty():
-        get_dict = write_queue.get()
+    send_d = {}
+    recv_d = {}
+    context = {}
 
-        if get_dict['author'] == 'sender':
-            f_send.write("\n" + str(get_dict) + "\n")
-        else:
-            f_rec.write("\n" + str(get_dict) + "\n")
+    with open("Sent Requests.txt", "w+") as f_send, \
+        open("Received Requests.txt", "w+") as f_rec:
+        while not write_queue.empty():
+            get_dict = write_queue.get()
+
+            seq_number = get_dict.get('seq_number')
+            thread_number = get_dict.get('thread_number')
+            req_id = get_dict.get('req_id')
+
+            if get_dict['author'] == 'sender':
+                f_send.write("\n" + str(get_dict) + "\n")
+                send_d[req_id] = get_dict
+
+            else:
+                f_rec.write("\n" + str(get_dict) + "\n")
+                recv_d[req_id] = get_dict
+    # Merging sender & receiver dictionaries into one
+    print(send_d)
+
 
 if __name__ == "__main__":
     TOPIC = "bar"
@@ -168,7 +197,7 @@ if __name__ == "__main__":
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    no_requests = 10
+    no_requests = 20
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
     write_q = multiprocessing.Queue()
