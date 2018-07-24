@@ -8,7 +8,8 @@ import queue
 import json
 import string
 import random
-import concurrent.futures
+from collections import defaultdict
+
 
 def id_generator(size=10, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
@@ -17,49 +18,25 @@ def worker(qq, thread_number, write_queue):
     """
     Sends POST requests
     """
-    # data = {
-    # 'node_id':'00000000-0000-0000-0000-000000002977',
-    # 'session_id':session_id,
-    # 'thread_number': thread_number,
-    # 'sys_ts': None,
-    # 'seq_number': None,
-    # 'status_code': None,
-    # 'res_ts': None,
-    # 'author': 'sender',
-    # }
 
-    while not qq.empty():
+    while True:
         seq_number = qq.get()
-
-        # if item is None:
-        #     break
-        # data['res_ts'] = None
-        # data['response_time'] = None
-        # data['status_code'] = None
-        # data['seq_number'] = item
-        # data['sys_ts'] = time.time()
-        req_id = "{}[{}]".format(thread_number, seq_number)
         data = {
         'node_id':'00000000-0000-0000-0000-000000002977',
         'session_id':session_id,
         'thread_number': thread_number,
-        'sys_ts': time.time(),
-        'seq_number': seq_number,
-        'status_code': None,
-        'res_ts': None,
-        'author': 'sender',
-        'req_id': req_id,
         }
 
+
+        if seq_number == None:
+            break
+
+        data['seq_number'] = seq_number
+        data['sys_ts'] = time.time()
         r = requests.post(url, json = data)
+        print(data)
 
-
-        data['res_ts'] = time.time()
-        response_time = data.get('res_ts') - data.get('sys_ts')
-        data['response_time'] = response_time
-        status_code = r.status_code
-        data['status_code'] = status_code
-        write_queue.put(('sender', data))
+        write_queue.put(data)
 
 
 def sender(number_req, q, write_queue):
@@ -69,7 +46,7 @@ def sender(number_req, q, write_queue):
     qq = queue.Queue()
     threads = []
     messages_sent = 0
-    thread_no = 5
+    thread_no = 3
 
     for i in range(number_req):
         qq.put(i)
@@ -84,8 +61,8 @@ def sender(number_req, q, write_queue):
 
     print("%% Messages sent: {}".format(messages_sent))
 
-    # for _ in range(thread_no):
-    #     qq.put(None)
+    for _ in range(thread_no):
+        qq.put(None)
 
     for t in threads:
         t.join()
@@ -139,6 +116,7 @@ def receiver(q, l, no_requests, write_queue):
                     raise KafkaException(msg.error())
                     break
 
+            kafka_ts = msg.timestamp()[1]
             msg_load = json.loads(msg.value())
 
             if not msg_load.get('session_id') == session_id:
@@ -148,13 +126,14 @@ def receiver(q, l, no_requests, write_queue):
             tm_msg = msg_load['sys_ts']
             tm_tot = tm_msg + tm_out
             messages_received += 1
+            msg_load['kakfa_ts'] = kafka_ts
+            print(msg_load)
+            write_queue.put(msg_load)
 
             if messages_received == no_requests:
                 print("%% Messages received: {}".format(messages_received))
+                write_queue.put(None)
                 break
-
-            msg_load['author'] = 'receiver'
-            write_queue.put(('receiver', msg_load))
 
     except KeyboardInterrupt:
         sys.stderr.write('%% Aborted by user\n')
@@ -167,35 +146,40 @@ def reader(write_queue):
     """
     Reads queue and divide information
     """
-    send_d = {}
-    recv_d = {}
-    context = {}
+    context = defaultdict(dict)
+
 
     with open("Sent Requests.txt", "w+") as f_send, \
         open("Received Requests.txt", "w+") as f_rec:
-        
-        while not write_queue.empty():
-            get_tup = write_queue.get()
-            req_id = get_tup[1].get('req_id')
 
-            if get_tup[0] == 'sender':
-                f_send.write("\n" + str(get_tup[1]) + "\n")
-                send_d[req_id] = get_tup[1]
+        while True:
+            item = write_queue.get()
 
+            if item == None:
+                break
+
+            thread_number = item.get('thread_number')
+            seq_number = item.get('seq_number')
+            request_id = "{}[{}]".format(thread_number, seq_number)
+
+            if request_id not in context:
+                print('new', request_id)
+                context[request_id] = item
             else:
-                f_rec.write("\n" + str(get_tup[1]) + "\n")
-                recv_d[req_id] = get_tup[1]
-    # Merging sender & receiver dictionaries into one
-    print(send_d)
+                print('update', request_id)
+                context[request_id].update(item)
 
-
+    return context
+    # for key in send_d:
+    #     if key in recv_d:
+    #         print(key, recv_d[key])
 if __name__ == "__main__":
     TOPIC = "bar"
     BROKER = "kafka:9092"
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    no_requests = 20
+    no_requests = 10
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
     write_q = multiprocessing.Queue()
@@ -214,4 +198,9 @@ if __name__ == "__main__":
 
     p_receiver.join()
     p_sender.join()
-    reader(write_q)
+    context = reader(write_q)
+
+
+    for key, value in context.items():
+        print(key)
+        print(value)
