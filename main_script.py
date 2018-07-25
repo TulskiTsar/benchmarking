@@ -42,6 +42,7 @@ def worker(qq, thread_number, write_queue):
         data['elapsed_time'] = r.elapsed.total_seconds()
         # print(data)
         write_queue.put(data)
+    print("%%%%%%%%%%%%%%%%% Thread {} quitting   %%%%%%%%%%%%%%%%%%%".format(thread_number))
 
 
 def sender(number_req, q, write_queue):
@@ -51,7 +52,7 @@ def sender(number_req, q, write_queue):
     qq = queue.Queue()
     threads = []
     messages_sent = 0
-    thread_no = 5
+    thread_no = 10
 
     for i in range(number_req):
         qq.put(i)
@@ -69,8 +70,10 @@ def sender(number_req, q, write_queue):
     for _ in range(thread_no):
         qq.put(None)
 
+    print("%%%%%%%%%%%%%%%%% Sender process is ending 1  %%%%%%%%%%%%%%%%%%%")
     for t in threads:
         t.join()
+    print("%%%%%%%%%%%%%%%%% Sender process is ending 2  %%%%%%%%%%%%%%%%%%%")
 
 def receiver(q, l, no_requests, write_queue):
 
@@ -179,13 +182,22 @@ def reader(write_queue):
     # for key in send_d:
     #     if key in recv_d:
     #         print(key, recv_d[key])
+
+
+
+def emptyMe(q):
+    while True:
+        x = q.get()
+        if x is None:
+            break
+
 if __name__ == "__main__":
     TOPIC = "bar"
     BROKER = "kafka:9092"
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    no_requests = 148
+    no_requests = 1000
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
     write_q = multiprocessing.Queue()
@@ -199,87 +211,97 @@ if __name__ == "__main__":
                                 target=sender,
                                 args=(no_requests, q, write_q),
                                 )
-    p_receiver.start()
-    p_sender.start()
 
+    p_writerQ = multiprocessing.Process(target=emptyMe, args=(write_q, ))
+    p_writerQ.start()
+
+    p_receiver.start()
+    l.acquire()
+    p_sender.start()
+    l.release()
     p_sender.join()
     print("%%%%%%%%%%%%%%%%% Sender process terminated   %%%%%%%%%%%%%%%%%%%")
+    # p_sender.terminate()
+
     p_receiver.join()
     print("%%%%%%%%%%%%%%%%% Receiver process terminated %%%%%%%%%%%%%%%%%%%")
 
-    context = reader(write_q)
 
-    sys_ts_list = []
-    res_ts_list = []
-    cloud_ts_list = []
-    request_list = []
-    kafka_ts_list = []
-    kafka_test_list = []
-    elapsed_list = []
+    p_writerQ.join()
 
-    # print(context)
-
-    for key, dicto in context.items():
-        request_list.append(key)
-        sys_ts_list.append(dicto['sys_ts'])
-        res_ts_list.append(dicto['res_ts'])
-        cloud_ts_list.append(dicto['cloud_ts'])
-        kafka_ts_list.append(dicto['kafka_ts'])
-        kafka_test_list.append(dicto['kafka_test'])
-        elapsed_list.append(dicto['elapsed_time'])
-
-        # print(type(context[key]))
-        # for key, value in context[key].items():
-        #     print(key)
-        #     print(value)
-        # print(dicto['kafka_ts'])
-        # print(response_time)
-
-
-    # for key, value in context.items():
-        # print(key)
-        # print(value)
-
-    # print(str(res_ts_list) + "\n")
-    # print(str(sys_ts_list) + "\n")
-    # print(str(cloud_ts_list) + "\n")
-    # print(str(kafka_ts_list) + "\n")
-
-
-    request_array = np.array(request_list)
-
-    sys_ts_array = np.array(sys_ts_list)
-    res_ts_array = np.array(res_ts_list)
-    cloud_ts_array = np.array(cloud_ts_list)
-    kafka_ts_array = np.array(kafka_ts_list)
-    kafka_test_array = np.array(kafka_test_list)
-    elapsed_array = np.array(elapsed_list)
-
-    # print(cloud_ts_array)
-    # print(sys_ts_array)
-
-    elapsed_array = elapsed_array * 1000
-
-    response_time_array = res_ts_array - sys_ts_array
-    gobbler_time_array = cloud_ts_array - sys_ts_array
-    kafka_time_array = kafka_ts_array - cloud_ts_array
-    kafka_send_array = kafka_ts_array - sys_ts_array
-    kafka_send_test_array = kafka_test_array - sys_ts_array
-
-    response_time_median = np.median(response_time_array)
-    gobbler_time_median = np.median(gobbler_time_array)
-    kafka_time_median = np.median(kafka_time_array)
-    kafka_send_median = np.median(kafka_send_array)
-    kafka_send_test_median = np.median(kafka_send_test_array)
-    elapsed_median = np.median(elapsed_array)
-
-    with open("Metrics.txt", "w+") as fopen:
-        fopen.write("Median response time: {}\n".format(response_time_median))
-        fopen.write("Median elapsed time: {}\n".format(elapsed_median))
-        fopen.write("Median script -> gobbler time: {}\n".format(gobbler_time_median))
-        fopen.write("Median gobbler -> kafka time: {}\n".format(kafka_time_median))
-        fopen.write("Median script -> kafka time: {}\n".format(kafka_send_median))
-        fopen.write("Median kafka send test time: {}\n".format(kafka_send_test_median))
+    # context = reader(write_q)
+    #
+    # sys_ts_list = []
+    # res_ts_list = []
+    # cloud_ts_list = []
+    # request_list = []
+    # kafka_ts_list = []
+    # kafka_test_list = []
+    # elapsed_list = []
+    #
+    # # print(context)
+    #
+    # for key, dicto in context.items():
+    #     request_list.append(key)
+    #     sys_ts_list.append(dicto['sys_ts'])
+    #     res_ts_list.append(dicto['res_ts'])
+    #     cloud_ts_list.append(dicto['cloud_ts'])
+    #     kafka_ts_list.append(dicto['kafka_ts'])
+    #     kafka_test_list.append(dicto['kafka_test'])
+    #     elapsed_list.append(dicto['elapsed_time'])
+    #
+    #     # print(type(context[key]))
+    #     # for key, value in context[key].items():
+    #     #     print(key)
+    #     #     print(value)
+    #     # print(dicto['kafka_ts'])
+    #     # print(response_time)
+    #
+    #
+    # # for key, value in context.items():
+    #     # print(key)
+    #     # print(value)
+    #
+    # # print(str(res_ts_list) + "\n")
+    # # print(str(sys_ts_list) + "\n")
+    # # print(str(cloud_ts_list) + "\n")
+    # # print(str(kafka_ts_list) + "\n")
+    #
+    #
+    # request_array = np.array(request_list)
+    #
+    # sys_ts_array = np.array(sys_ts_list)
+    # res_ts_array = np.array(res_ts_list)
+    # cloud_ts_array = np.array(cloud_ts_list)
+    # kafka_ts_array = np.array(kafka_ts_list)
+    # kafka_test_array = np.array(kafka_test_list)
+    # elapsed_array = np.array(elapsed_list)
+    #
+    # # print(cloud_ts_array)
+    # # print(sys_ts_array)
+    #
+    # elapsed_array = elapsed_array * 1000
+    #
+    # response_time_array = res_ts_array - sys_ts_array
+    # gobbler_time_array = cloud_ts_array - sys_ts_array
+    # kafka_time_array = kafka_ts_array - cloud_ts_array
+    # kafka_send_array = kafka_ts_array - sys_ts_array
+    # kafka_send_test_array = kafka_test_array - sys_ts_array
+    #
+    # response_time_median = np.median(response_time_array)
+    # gobbler_time_median = np.median(gobbler_time_array)
+    # kafka_time_median = np.median(kafka_time_array)
+    # kafka_send_median = np.median(kafka_send_array)
+    # kafka_send_test_median = np.median(kafka_send_test_array)
+    # elapsed_median = np.median(elapsed_array)
+    #
+    # with open("Metrics.txt", "w+") as fopen:
+    #     fopen.write("Median response time: {}\n".format(response_time_median))
+    #     fopen.write("Median elapsed time: {}\n".format(elapsed_median))
+    #     fopen.write("Median script -> gobbler time: {}\n".format(gobbler_time_median))
+    #     fopen.write("Median gobbler -> kafka time: {}\n".format(kafka_time_median))
+    #     fopen.write("Median script -> kafka time: {}\n".format(kafka_send_median))
+    #     fopen.write("Median kafka send test time: {}\n".format(kafka_send_test_median))
 
 
 
