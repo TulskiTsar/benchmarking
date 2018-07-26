@@ -42,7 +42,7 @@ def worker(qq, thread_number, write_queue):
         data['elapsed_time'] = r.elapsed.total_seconds()
         # print(data)
         write_queue.put(data)
-    print("%%%%%%%%%%%%%%%%% Thread {} quitting   %%%%%%%%%%%%%%%%%%%".format(thread_number))
+    # print("%%%%%%%%%%%%%%%%% Thread {} quitting   %%%%%%%%%%%%%%%%%%%".format(thread_number))
 
 
 def sender(number_req, q, write_queue):
@@ -70,10 +70,8 @@ def sender(number_req, q, write_queue):
     for _ in range(thread_no):
         qq.put(None)
 
-    print("%%%%%%%%%%%%%%%%% Sender process is ending 1  %%%%%%%%%%%%%%%%%%%")
     for t in threads:
         t.join()
-    print("%%%%%%%%%%%%%%%%% Sender process is ending 2  %%%%%%%%%%%%%%%%%%%")
 
 def receiver(q, l, no_requests, write_queue):
 
@@ -146,7 +144,7 @@ def receiver(q, l, no_requests, write_queue):
                 break
 
     except KeyboardInterrupt:
-        sys.stderr.write('%% Aborted by user\n')
+        sys.stderr.write('%% Receiver aborted by user\n')
 
     finally:
         print("%% Closing consumer \n")
@@ -157,7 +155,6 @@ def reader(write_queue):
     """
     Reads queue and divide information
     """
-    print("%% Reader initialised")
     context = defaultdict(dict)
     with open("Sent Requests.txt", "w+") as f_send, \
         open("Received Requests.txt", "w+") as f_rec:
@@ -183,13 +180,25 @@ def reader(write_queue):
     #     if key in recv_d:
     #         print(key, recv_d[key])
 
+def reader(q):
+    context = defaultdict(dict)
+    try:
+        with open("Sent Requests.txt", "w+") as f_send, open("Received Requests.txt", "w+") as f_recv:
+            while True:
+                x = q.get()
+                if x is None:
+                    print("%% Reader terminated")
+                    break
+                thread_number = x.get("thread_number")
+                seq_number = x.get("seq_number")
+                request_id = "{}[{}]".format(thread_number, seq_number)
 
-
-def emptyMe(q):
-    while True:
-        x = q.get()
-        if x is None:
-            break
+                if request_id not in context:
+                    context[request_id] = x
+                else:
+                    context[request_id].update(x)
+    except KeyboardInterrupt:
+        sys.stderr.write('%% Reader aborted by user\n')
 
 if __name__ == "__main__":
     TOPIC = "bar"
@@ -197,7 +206,7 @@ if __name__ == "__main__":
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    no_requests = 1000
+    no_requests = 2000
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
     write_q = multiprocessing.Queue()
@@ -212,21 +221,20 @@ if __name__ == "__main__":
                                 args=(no_requests, q, write_q),
                                 )
 
-    p_writerQ = multiprocessing.Process(target=emptyMe, args=(write_q, ))
-    p_writerQ.start()
+    p_writerQ = multiprocessing.Process(
+                                target=reader,
+                                args=(write_q,),
+                                )
 
+    p_writerQ.start()
     p_receiver.start()
     l.acquire()
     p_sender.start()
     l.release()
     p_sender.join()
     print("%%%%%%%%%%%%%%%%% Sender process terminated   %%%%%%%%%%%%%%%%%%%")
-    # p_sender.terminate()
-
     p_receiver.join()
     print("%%%%%%%%%%%%%%%%% Receiver process terminated %%%%%%%%%%%%%%%%%%%")
-
-
     p_writerQ.join()
 
     # context = reader(write_q)
