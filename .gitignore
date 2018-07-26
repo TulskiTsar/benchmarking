@@ -2,3 +2,9 @@
 *.swp
 *.swo
 *.pyc
+Status\ Logs.txt
+Context Dictionary.txt
+Metrics.txt
+Received Requests.txt
+Sent Requests.txt
+test.py 
