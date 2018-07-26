@@ -34,9 +34,9 @@ def worker(qq, thread_number, write_queue):
             break
 
         data['seq_number'] = seq_number
-        data['sys_ts'] = int(round(time.time() * 1000))
+        data['sys_ts'] = time.time()
         r = requests.post(url, json = data)
-        data['res_ts'] = int(round(time.time() * 1000))
+        data['res_ts'] = time.time()
         data['elapsed_time'] = r.elapsed.total_seconds()
         # print(data)
         write_queue.put(data)
@@ -166,8 +166,8 @@ def metric_writer(context):
 
     request_array = np.array(request_list)
 
-    sys_ts_array = np.array(sys_ts_list)
-    res_ts_array = np.array(res_ts_list)
+    sys_ts_array = np.array(sys_ts_list) * 1000
+    res_ts_array = np.array(res_ts_list) * 1000
     cloud_ts_array = np.array(cloud_ts_list)
     kafka_ts_array = np.array(kafka_ts_list)
     elapsed_array = np.array(elapsed_list)
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     GROUP = "foo"
     session_id = id_generator(5)
     url = "http://localhost:8080/data/{}".format(TOPIC)
-    no_requests = 10000
+    no_requests = 1000
     l = multiprocessing.Lock()
     q = multiprocessing.Queue()
     write_q = multiprocessing.Queue()
